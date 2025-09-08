@@ -1,0 +1,8 @@
+{
+    "nside":64,
+    "nfreqs":2,
+    "distances":1, 
+    "seed":42,
+    "freqs": [30000000000.0],
+    "stokes": ["I", "Q", "U"]
+}
