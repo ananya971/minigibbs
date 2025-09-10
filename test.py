@@ -1,6 +1,4 @@
 import jax 
-from jax import numpy as jnp 
-import scipy 
 import healpy as hp 
 import camb
 import nifty.re as jft
@@ -10,11 +8,7 @@ from sample import Cl_given_s, gibbs
 import numpy as np
 from utils import Dl_to_Cl
 from cg import CG
-from sample import get_sig_ps_healpy
 
-
-from nifty.re import cg
-from functools import partial
 
 c = load_config()
 
@@ -46,17 +40,13 @@ cmb_field = cmb_model(input)[0][0]
 
 key, subkey = jax.random.split(key, num= 2)
 
-noise_1 = lambda x: 1e-6 * x # Try also with one zero less
+nvar = 5e-6
 
-noise_truth_1 = ((
-    (noise_1(jft.ones_like(cmb_model.target))) ** 0.5
-) * np.abs(jft.random_like(key, cmb_model.target)))[0][0]
-
-noise_truth_2 = ((
-    (noise_1(jft.ones_like(cmb_model.target))) ** 0.5
-) * np.abs(jft.random_like(subkey, cmb_model.target)))[0][0]
-
+noise_truth_1 = np.ones(hp.nside2npix(c['nside']))*nvar
+noise_truth_2 = np.ones(hp.nside2npix(c['nside']))*nvar
 data_1 = cmb_field + noise_truth_1
+
+# check power spectra of data and ground truth, noise only dominates at ell~80
 
 data_2 = cmb_field + noise_truth_2
 
@@ -65,20 +55,25 @@ all_noise = np.append(noise_truth_1, noise_truth_2)
 
 assert all_data.shape == all_noise.shape, "Data and noise shapes do not match!"
 
-cgggg = CG(c = c, data = all_data, noise = all_noise, C_ell = TTCl)
-
-hp.mollview(hp.alm2map(cgggg(), nside = c['nside'], lmax = 2 * c['nside'])*1e6)
-
-
 # Sample from C_ell
 
 cmb_alms = hp.map2alm(np.asarray(cmb_field), lmax = 2 * c['nside'], mmax = 2 * c['nside'])
 
 
-result_ps, result_alm = gibbs(iter = 20, init_ps= TTCl, data = all_data, noise = all_noise, nside = c['nside']) 
+result_ps, result_alm = gibbs(iter = 5, init_ps= TTCl, data = all_data, noise = all_noise, nside = c['nside']) 
 
 
+# Checking power spectra of data vs. cmb
+# import matplotlib.pyplot as plt 
 
+# data1_cl = hp.alm2cl(alms1 = hp.map2alm(np.asarray(data_1), lmax = 2 * c['nside']), lmax = 2*c['nside'])
+
+# plt.plot(jnp.arange(data1_cl.shape[0]), data1_cl)
+# plt.xscale('log')
+
+# cmb_cl = hp.alm2cl(alms1 = hp.map2alm(np.asarray(cmb_field), lmax = 2 * c['nside']), lmax = 2*c['nside'])
+# plt.plot(jnp.arange(cmb_cl.shape[0]), cmb_cl)
+# plt.xscale('log')
 
 
 

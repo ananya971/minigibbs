@@ -1,5 +1,5 @@
 {
-    "nside":64,
+    "nside":128,
     "nfreqs":2,
     "distances":1, 
     "seed":42,

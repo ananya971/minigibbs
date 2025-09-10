@@ -32,11 +32,14 @@ class CG:
         x = np.asarray(x)
         alm_cl = hp.almxfl(alm = x, fl = np.sqrt(self.C_ell))
         pix_alm_cl = hp.alm2map(alm_cl, nside = self.c['nside'], lmax = 2 * self.c['nside'])
+        # hp.mollview(pix_alm_cl, norm = 'hist', title = 'pix_alm_cl')
         A_pix_alm = self.apply_A(pix_alm_cl, self.c['nfreqs'])
         NA_pix = np.asarray(self.Ninv) * A_pix_alm
         ATNA_pix = self.apply_A_transpose(NA_pix, self.c['nfreqs'])
+        # hp.mollview(ATNA_pix, norm ='hist', title = 'ATNA_pix')
         ATNA_alm = hp.map2alm(ATNA_pix, lmax = 2 * self.c['nside'])
         CATNA_alm = hp.almxfl(ATNA_alm, fl = np.sqrt(self.C_ell))
+        # hp.mollview(hp.alm2map(CATNA_alm + x, nside = self.c['nside'], lmax = 2 * self.c['nside']), norm = 'hist', title = 'apply_mat(x)')
         return CATNA_alm + x
 
     def rhs(self):
@@ -52,13 +55,14 @@ class CG:
         term_2c = hp.map2alm(term_2b, lmax = 2 * self.c['nside'])
         term_2 = hp.almxfl(term_2c, fl = np.sqrt(self.C_ell))
 
-        omega0 = jft.random_like(key, jax.ShapeDtypeStruct(shape = (int((self.ps * (self.ps -1))/2 + (self.ps)) ,), dtype = jnp.float64))
+        omega0 = jft.random_like(key, jax.ShapeDtypeStruct(shape = (int((self.ps * (self.ps -1))/2 + (self.ps)) ,), dtype = jnp.complex64))
 
         return term_1 + term_2 + np.asarray(omega0)
     
     def apply_cg(self):
         rhs = self.rhs()
-        return cg(self.apply_mat, rhs, tol = 1e-5)
+        init_sig = hp.synalm(self.C_ell, lmax = 2 * self.c['nside'])
+        return cg(self.apply_mat, rhs, tol = 1e-5, x0 = init_sig)
 
     def __call__(self):
         cg_res = np.asarray(self.apply_cg()[0])

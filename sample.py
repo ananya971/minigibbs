@@ -10,6 +10,7 @@ from nifty.re import cg
 from cg import CG
 import matplotlib.pyplot as plt
 
+#TODO: Add beam and PWF
 
 c = load_config()
 
@@ -51,21 +52,6 @@ def Cl_given_s_healpy(alms, nside):
     return C_ell
 
 
-def sample_Cl_given_s(alms, nside, key):
-    lmax = 2*nside
-    sig_ps = get_sig_ps_healpy(alms)
-    C_ell = jnp.zeros(lmax+1)
-
-    for ell in range(lmax+1):
-        alpha = (2*ell+1)/2
-        beta = (2*ell+1)*sig_ps[ell]/2
-        # Inverse-gamma(α, β) = 1 / Gamma(α, 1/β)
-        key, subkey = random.split(key)
-        gamma_sample = random.gamma(subkey, alpha) * beta
-        C_ell = C_ell.at[ell].set(1.0 / gamma_sample)
-
-    return C_ell
-
 
 def expand_alms(alms, lmax):
     '''Expand a set of a_lm values returned by healpy for m>=0, and convert to a full set of alm values of size (lmax+1)**2
@@ -105,6 +91,7 @@ def get_sig_ps(alms):
     return sig_ps
 
 def get_sig_ps_healpy(alms):
+    # Gives me the same result as (2ell+1)*hp.alm2cl
     lmax = hp.Alm.getlmax(alms.shape[0])
     sig_ps = jnp.zeros(shape = lmax + 1)
     for ell in range(lmax+1):
@@ -124,15 +111,7 @@ def gibbs(iter, init_ps, data, noise, nside):
     for i in range(iter):
         signal_alm = CG(c, data, noise, ps)()
         C_ell = Cl_given_s_fin(np.asarray(signal_alm), lmax = 2 * nside) # init_signal in pixel space
-        ps = C_ell
-        print(f'{ps=}')
-        print(f'{i=}')
-        # print(f'{init_ps=}')
-        plt.figure()
-        plt.plot(np.arange(init_ps.shape[0]), init_ps)
-        plt.title('init_ps')
-        plt.xscale('log')
-        plt.show()
+        ps = C_ell # power spectrum is the initial power spectrum for i = 0, then later is the sampled power spectrum
         # signal_alm_final = hp.almxfl(np.asarray(signal_alm[0]), np.asarray(C_ell[0]))
         result_pix = hp.alm2map(np.asarray(signal_alm), nside = c['nside'], lmax= 2 * c['nside'])
         hp.mollview(result_pix*1e6, norm = 'hist', title = f'{i=}')
@@ -147,21 +126,26 @@ def gibbs(iter, init_ps, data, noise, nside):
 
 
 def Cl_given_s_fin(alms, lmax):
-    print(type(alms))
-    naive_Cl = hp.alm2cl(alms1 = alms, lmax = lmax)
+    naive_Cl = hp.alm2cl(alms1 = alms, alms2 = None, lmax = lmax)
     sig_ell = (2 * np.arange(0, lmax+1) + 1) * naive_Cl
     key = jax.random.PRNGKey(c['seed'])
-    subkey = jax.random.split(key, num=2*lmax-1)
-    rho_sq = jnp.zeros(shape = lmax+1)
+    subkey = jax.random.split(key, num=lmax+1)
+    rho_ell = jnp.zeros(shape = lmax+1)
 
-    for ell in range(lmax+1):
-        rn = jax.random.normal(subkey[ell], shape = jnp.asarray((2*lmax-1,)))
-        rn_mod = [np.abs(i)**2 for i in rn]
-        rho_ell = np.sum(rn_mod)
-        rho_sq = rho_sq.at[ell].set(rho_ell)
-    rho_sq = rho_sq.at[0].set(1.)
+    for ell in range(1, lmax+1):
+        rho_ell = rho_ell.at[ell].set(jnp.sum(jax.random.normal(subkey[ell], shape = (2*ell-1,))**2))
     
-    C_ell = sig_ell/rho_sq
+    rho_ell = rho_ell.at[0].set(1.)
+
+    # for ell in range(lmax+1):
+    #     rn = jax.random.normal(subkey[ell], shape = jnp.asarray((2*lmax-1,)))
+    #     rn_mod = [np.abs(i)**2 for i in rn]
+    #     rho_ell = np.sum(rn_mod)
+    #     rho_sq = rho_sq.at[ell].set(rho_ell)
+    # rho_sq = rho_sq.at[0].set(1.)
+    # print(f'{rho_sq=}')
+    
+    C_ell = sig_ell/rho_ell
     return C_ell
 
 
