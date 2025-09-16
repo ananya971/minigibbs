@@ -19,41 +19,44 @@ class CG:
         self.C_ell = C_ell
         self.npix = 12 * self.c['nside']**2
         self.ps = self.C_ell.shape[0]
+        self.res = hp.nside2resol(nside = self.c['nside'], arcmin = True)/60 #[deg]
     
     def apply_A(self, s, n_freq):
-        return np.tile(s, n_freq)
+        s_beam = hp.almxfl(alm = s, fl = hp.gauss_beam(fwhm = self.res, lmax = 2 * self.c['nside']))
+        spix_beam = hp.alm2map(s_beam, nside = self.c['nside'], lmax = 2 * self.c['nside'])
+        return np.tile(spix_beam, n_freq)
     
     def apply_A_transpose(self, stacked, n_freq):
-        return stacked.reshape(n_freq, self.npix).sum(axis = 0)
+        s_summed = stacked.reshape(n_freq, self.npix).sum(axis = 0)
+        spix_summed = hp.map2alm(s_summed, lmax = 2 * self.c['nside'])
+        s_beamed = hp.almxfl(alm = spix_summed, fl = hp.gauss_beam(fwhm = self.res, lmax = 2 * self.c['nside']))
+        return s_beamed
     
 
     def apply_mat(self,x):
         '''Apply matrix, finish doc'''
         x = np.asarray(x)
-        alm_cl = hp.almxfl(alm = x, fl = np.sqrt(self.C_ell))
-        pix_alm_cl = hp.alm2map(alm_cl, nside = self.c['nside'], lmax = 2 * self.c['nside'])
-        # hp.mollview(pix_alm_cl, norm = 'hist', title = 'pix_alm_cl')
-        A_pix_alm = self.apply_A(pix_alm_cl, self.c['nfreqs'])
+        alm_cl = hp.almxfl(alm = x, fl = np.sqrt(self.C_ell)) # S^(1/2)x
+        A_pix_alm = self.apply_A(alm_cl, self.c['nfreqs'])
         NA_pix = np.asarray(self.Ninv) * A_pix_alm
         ATNA_pix = self.apply_A_transpose(NA_pix, self.c['nfreqs'])
-        # hp.mollview(ATNA_pix, norm ='hist', title = 'ATNA_pix')
-        ATNA_alm = hp.map2alm(ATNA_pix, lmax = 2 * self.c['nside'])
-        CATNA_alm = hp.almxfl(ATNA_alm, fl = np.sqrt(self.C_ell))
-        # hp.mollview(hp.alm2map(CATNA_alm + x, nside = self.c['nside'], lmax = 2 * self.c['nside']), norm = 'hist', title = 'apply_mat(x)')
+        CATNA_alm = hp.almxfl(ATNA_pix, fl = np.sqrt(self.C_ell))
         return CATNA_alm + x
 
     def rhs(self):
         term_1a = self.Ninv * self.data
         term_1b = self.apply_A_transpose(term_1a, self.c['nfreqs'])
-        term_1c = hp.map2alm(term_1b, lmax = 2 * self.c['nside'])
-        term_1 = hp.almxfl(term_1c, fl = np.sqrt(self.C_ell))
+        term_1 = hp.almxfl(term_1b, fl = np.sqrt(self.C_ell))
+
+        hp.mollview(hp.alm2map(term_1*1e6, nside = self.c['nside'], lmax = 2 * self.c['nside']), norm = 'hist', title = 'term_1')
 
         omega1 = jft.random_like(key, jax.ShapeDtypeStruct(shape = self.noise.shape, dtype = jnp.float64))
 
         term_2a = np.sqrt(self.Ninv) * np.asarray(omega1)
         term_2b = self.apply_A_transpose(term_2a, self.c['nfreqs'])
-        term_2c = hp.map2alm(term_2b, lmax = 2 * self.c['nside'])
-        term_2 = hp.almxfl(term_2c, fl = np.sqrt(self.C_ell))
+        term_2 = hp.almxfl(term_2b, fl = np.sqrt(self.C_ell))
+
+        hp.mollview(hp.alm2map(term_2*1e6, nside = self.c['nside'], lmax = 2 * self.c['nside']), norm = 'hist', title = 'term_2')
 
         omega0 = jft.random_like(key, jax.ShapeDtypeStruct(shape = (int((self.ps * (self.ps -1))/2 + (self.ps)) ,), dtype = jnp.complex64))
 

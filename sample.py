@@ -5,7 +5,6 @@ from jax import random
 import jax.numpy as jnp
 import numpy as np
 from utils import load_config
-from functools import partial
 from nifty.re import cg 
 from cg import CG
 import matplotlib.pyplot as plt
@@ -15,9 +14,7 @@ import matplotlib.pyplot as plt
 c = load_config()
 
 def Cl_given_s(alms, nside):
-    map = hp.alm2map(alms, pol = False, nside = nside)
     lmax = 2 * nside
-    # alms = hp.map2alm(map, lmax = lmax, pol = False)
     alms_full = expand_alms(alms, lmax = lmax)
     sig_ps = get_sig_ps(alms_full)
     
@@ -36,7 +33,6 @@ def Cl_given_s(alms, nside):
 def Cl_given_s_healpy(alms, nside):
     '''Sample from the power spectrum C_ell given the signal alms, and the nside.
     "Healpy compliant", so using only the alms values for m>=0 as healpy returns.'''
-    # map = hp.alm2map(alms, pol = False, nside = nside)
     lmax = 2 * nside
     sig_ps = get_sig_ps_healpy(alms)
     key = jax.random.PRNGKey(c['seed'])
@@ -106,6 +102,23 @@ def get_sig_ps_healpy(alms):
     return sig_ps
             
 
+
+def Cl_given_s_fin(alms, lmax):
+    naive_Cl = hp.alm2cl(alms1 = alms, alms2 = None, lmax = lmax)
+    sig_ell = (2 * np.arange(0, lmax+1) + 1) * naive_Cl
+    key = jax.random.PRNGKey(c['seed'])
+    subkey = jax.random.split(key, num=lmax+1)
+    rho_ell = jnp.zeros(shape = lmax+1)
+
+    for ell in range(1, lmax+1):
+        rho_ell = rho_ell.at[ell].set(jnp.sum(jax.random.normal(subkey[ell], shape = (2*ell-1,))**2))
+    
+    rho_ell = rho_ell.at[0].set(1.)
+    
+    C_ell = sig_ell/rho_ell
+    return C_ell
+
+
 def gibbs(iter, init_ps, data, noise, nside):
     ps = init_ps
     for i in range(iter):
@@ -124,29 +137,6 @@ def gibbs(iter, init_ps, data, noise, nside):
     return C_ell, signal_alm
 
 
-
-def Cl_given_s_fin(alms, lmax):
-    naive_Cl = hp.alm2cl(alms1 = alms, alms2 = None, lmax = lmax)
-    sig_ell = (2 * np.arange(0, lmax+1) + 1) * naive_Cl
-    key = jax.random.PRNGKey(c['seed'])
-    subkey = jax.random.split(key, num=lmax+1)
-    rho_ell = jnp.zeros(shape = lmax+1)
-
-    for ell in range(1, lmax+1):
-        rho_ell = rho_ell.at[ell].set(jnp.sum(jax.random.normal(subkey[ell], shape = (2*ell-1,))**2))
-    
-    rho_ell = rho_ell.at[0].set(1.)
-
-    # for ell in range(lmax+1):
-    #     rn = jax.random.normal(subkey[ell], shape = jnp.asarray((2*lmax-1,)))
-    #     rn_mod = [np.abs(i)**2 for i in rn]
-    #     rho_ell = np.sum(rn_mod)
-    #     rho_sq = rho_sq.at[ell].set(rho_ell)
-    # rho_sq = rho_sq.at[0].set(1.)
-    # print(f'{rho_sq=}')
-    
-    C_ell = sig_ell/rho_ell
-    return C_ell
 
 
 

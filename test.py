@@ -40,7 +40,7 @@ cmb_field = cmb_model(input)[0][0]
 
 key, subkey = jax.random.split(key, num= 2)
 
-nvar = 5e-6
+nvar = 1e-4
 
 noise_truth_1 = np.ones(hp.nside2npix(c['nside']))*nvar
 noise_truth_2 = np.ones(hp.nside2npix(c['nside']))*nvar
@@ -75,6 +75,7 @@ result_ps, result_alm = gibbs(iter = 5, init_ps= TTCl, data = all_data, noise = 
 # plt.plot(jnp.arange(cmb_cl.shape[0]), cmb_cl)
 # plt.xscale('log')
 
+# hp.mollview(hp.alm2map(result_alm, nside = c['nside'], lmax = 2 * c['nside'])*1e6, norm = 'hist')
 
 
 
