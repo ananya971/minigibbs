@@ -4,11 +4,10 @@ import camb
 import nifty.re as jft
 from cmb import CMB
 from utils import load_config
-from sample import Cl_given_s, gibbs
+from sample import gibbs
 import numpy as np
 from utils import Dl_to_Cl
-from cg import CG
-
+import jax.numpy as jnp
 
 c = load_config()
 
@@ -28,7 +27,6 @@ powers = results.get_cmb_power_spectra(pars, CMB_unit = 'K', lmax=2 * c['nside']
 power_spec = powers["total"]
 TTCl = Dl_to_Cl(power_spec[:, 0]) 
 
-c = load_config()
 seed = c['seed']
 
 key = jax.random.PRNGKey(seed)
@@ -40,15 +38,16 @@ cmb_field = cmb_model(input)[0][0]
 
 key, subkey = jax.random.split(key, num= 2)
 
-nvar = 1e-4
+nvar = 1e-8
 
-noise_truth_1 = np.ones(hp.nside2npix(c['nside']))*nvar
-noise_truth_2 = np.ones(hp.nside2npix(c['nside']))*nvar
-data_1 = cmb_field + noise_truth_1
+noise_truth_1 = (jax.random.normal(key, shape = cmb_field.shape, dtype = jnp.float64) * jnp.sqrt(nvar))**2 # Z = (X-mu)/sigma where Z is standard normally distributed
+noise_truth_2 = (jax.random.normal(subkey, shape = cmb_field.shape, dtype = jnp.float64) * jnp.sqrt(nvar))**2
 
-# check power spectra of data and ground truth, noise only dominates at ell~80
+cmb_alms = hp.map2alm(np.asarray(cmb_field), lmax = 2 * c['nside'], mmax = 2 * c['nside'])
 
-data_2 = cmb_field + noise_truth_2
+data_1 = hp.alm2map(hp.almxfl(cmb_alms, fl = hp.gauss_beam(2 * hp.nside2resol(c['nside']))), nside = c['nside'], lmax = 2 * c['nside']) + noise_truth_1 # d_1 = A(s) + n_1
+
+data_2 = hp.alm2map(hp.almxfl(cmb_alms, fl = hp.gauss_beam(2 * hp.nside2resol(nside = c['nside']))), nside = c['nside'], lmax = 2 * c['nside']) + noise_truth_2 # d_2 = A(s) + n_2
 
 all_data = np.append(data_1, data_2)
 all_noise = np.append(noise_truth_1, noise_truth_2)
@@ -60,7 +59,7 @@ assert all_data.shape == all_noise.shape, "Data and noise shapes do not match!"
 cmb_alms = hp.map2alm(np.asarray(cmb_field), lmax = 2 * c['nside'], mmax = 2 * c['nside'])
 
 
-result_ps, result_alm = gibbs(iter = 5, init_ps= TTCl, data = all_data, noise = all_noise, nside = c['nside']) 
+result_ps, result_alm = gibbs(iter = 5, init_ps= TTCl, data = all_data, noise = jnp.ones(2*hp.nside2npix(c['nside']))*nvar, nside = c['nside']) 
 
 
 # Checking power spectra of data vs. cmb

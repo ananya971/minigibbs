@@ -1,17 +1,34 @@
+from cg_no_pc import CGNoPrecon
 import jax 
 import json 
 import healpy as hp 
 from jax import random
 import jax.numpy as jnp
 import numpy as np
-from utils import load_config
+from utils import Cl_to_Dl, Dl_to_Cl, load_config
 from nifty.re import cg 
 from cg import CG
 import matplotlib.pyplot as plt
-
-#TODO: Add beam and PWF
+import camb
 
 c = load_config()
+
+pars = camb.set_params(H0=67.72,
+            ombh2=0.022,
+            omch2=0.1192,
+            mnu=0.06,
+            omk=0,
+            tau=0.054,
+            As=2.09e-9,
+            ns=0.9667,
+            halofit_version="mead",
+            lmax=2 * c['nside'],
+        )
+results = camb.get_results(pars)
+powers = results.get_cmb_power_spectra(pars, CMB_unit = 'K', lmax=2 * c['nside'])
+power_spec = powers["total"]
+TTDl = power_spec[:,0]
+
 
 def Cl_given_s(alms, nside):
     lmax = 2 * nside
@@ -38,13 +55,20 @@ def Cl_given_s_healpy(alms, nside):
     key = jax.random.PRNGKey(c['seed'])
     subkey = jax.random.split(key, num=2*lmax-1)
     rho_sq = jnp.zeros(shape = lmax+1)
-    for ell in range(lmax+1):
-        rn = jax.random.normal(subkey[ell], shape = jnp.asarray((2*lmax-1,)))
-        rn_mod = [np.abs(i)**2 for i in rn]
-        rho_ell = np.sum(rn_mod)
+    for ell in range(0,lmax+1):
+        rn = jax.random.normal(subkey[ell], shape = (2*ell-1,)) if ell>0 else jax.random.normal(subkey[ell])
+        rn_mod = [np.abs(i)**2 for i in rn] if ell>0 else np.abs(rn)**2
+        rho_ell = np.sum(rn_mod) if ell>0 else rn_mod
         rho_sq = rho_sq.at[ell].set(rho_ell)
-        
     C_ell = sig_ps/rho_sq
+    plt.figure()
+    plt.plot(jnp.arange(sig_ps.shape[0]), sig_ps, label = 'sig_ps')
+    plt.plot(jnp.arange(rho_sq.shape[0]), rho_sq, label = 'rho_sq')
+    plt.plot(jnp.arange(C_ell.shape[0]), C_ell, label = 'C_ell')
+    plt.legend()
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.show()
     return C_ell
 
 
@@ -110,11 +134,9 @@ def Cl_given_s_fin(alms, lmax):
     subkey = jax.random.split(key, num=lmax+1)
     rho_ell = jnp.zeros(shape = lmax+1)
 
-    for ell in range(1, lmax+1):
-        rho_ell = rho_ell.at[ell].set(jnp.sum(jax.random.normal(subkey[ell], shape = (2*ell-1,))**2))
-    
-    rho_ell = rho_ell.at[0].set(1.)
-    
+    for ell in range(0, lmax+1):
+        rho_ell = rho_ell.at[ell].set(jnp.sum(jax.random.normal(subkey[ell], shape = (2*ell-1,))**2)) if ell>0 else rho_ell.at[ell].set(jax.random.normal(subkey[ell]))
+        
     C_ell = sig_ell/rho_ell
     return C_ell
 
@@ -123,16 +145,23 @@ def gibbs(iter, init_ps, data, noise, nside):
     ps = init_ps
     for i in range(iter):
         signal_alm = CG(c, data, noise, ps)()
-        C_ell = Cl_given_s_fin(np.asarray(signal_alm), lmax = 2 * nside) # init_signal in pixel space
+        result_pix = hp.alm2map(np.asarray(signal_alm), nside = c['nside'], lmax= 2 * nside)
+        hp.mollview(result_pix*1e6, norm = 'hist', title = f'{i=}', unit = 'uK')
+        C_ell = Cl_given_s_healpy(np.asarray(signal_alm), nside = nside) # init_signal in pixel space
         ps = C_ell # power spectrum is the initial power spectrum for i = 0, then later is the sampled power spectrum
-        # signal_alm_final = hp.almxfl(np.asarray(signal_alm[0]), np.asarray(C_ell[0]))
-        result_pix = hp.alm2map(np.asarray(signal_alm), nside = c['nside'], lmax= 2 * c['nside'])
-        hp.mollview(result_pix*1e6, norm = 'hist', title = f'{i=}')
         plt.figure()
-        plt.plot(jnp.arange(C_ell.shape[0]), C_ell)
-        plt.title('C_ell')
+        plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(C_ell), label = 'D_ell check')
+        # plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(ps), label = 'ps check')
+        plt.legend()
         plt.xscale('log')
         plt.show()
+        # plt.figure()
+        # plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(C_ell), label = 'D_ell')
+        # plt.plot(np.arange(C_ell.shape[0]), TTDl, label = 'TTDl')
+        # plt.legend()
+        # plt.title(f'D_ell iteration {i}')
+        # plt.xscale('log')
+        # plt.show()
     
     return C_ell, signal_alm
 
