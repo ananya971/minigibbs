@@ -44,6 +44,14 @@ class CG:
         ATNA_pix = self.apply_A_transpose(NA_pix, self.c['nfreqs'])
         CATNA_alm = hp.almxfl(ATNA_pix, fl = np.sqrt(self.C_ell))
         return CATNA_alm + x
+    
+    def make_real_alms(self ,alms):
+        lmax = hp.Alm.getlmax(alms.shape[0])
+        for i in range (lmax+1):
+            idx = hp.Alm.getidx(lmax, i, m = 0)
+            alms = alms.at[idx].set(np.real(alms[idx])+0j)
+        # print(f"{alms[hp.Alm.getidx(lmax = 2*self.c['nside'], l = 2 * self.c['nside'], m = 0)]=}")
+        return alms
 
     def rhs(self):
         term_1a = self.Ninv * self.data
@@ -60,16 +68,16 @@ class CG:
         # hp.mollview(hp.alm2map(term_2*1e6, nside = self.c['nside'], lmax = 2 * self.c['nside']), norm = 'hist', title = 'term_2')
 
         omega0 = jft.random_like(key, jax.ShapeDtypeStruct(shape = (int((self.ps * (self.ps -1))/2 + (self.ps)) ,), dtype = jnp.complex64))
-
-        return term_1 + term_2 + np.asarray(omega0)
+        omega0_real = self.make_real_alms(omega0)
+        return term_1 + term_2 + np.asarray(omega0_real)
     
     def apply_cg(self):
         rhs = self.rhs()
         init_sig = hp.synalm(self.C_ell, lmax = 2 * self.c['nside'])
-        return cg(self.apply_mat, rhs, miniter = 300, x0 = init_sig, name = 'CG')
+        return cg(self.apply_mat, rhs, miniter = 300, x0 = init_sig ),#name = 'CG')
 
     def __call__(self):
-        cg_res = np.asarray(self.apply_cg()[0])
+        cg_res = np.asarray(self.apply_cg()[0][0])
         final_alm = hp.almxfl(cg_res, np.sqrt(self.C_ell))
         return final_alm
 

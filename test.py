@@ -38,10 +38,10 @@ cmb_field = cmb_model(input)[0][0]
 
 key, subkey = jax.random.split(key, num= 2)
 
-nvar = 1e-8
+nvar = 8e-11
 
-noise_truth_1 = (jax.random.normal(key, shape = cmb_field.shape, dtype = jnp.float64) * jnp.sqrt(nvar))**2 # Z = (X-mu)/sigma where Z is standard normally distributed
-noise_truth_2 = (jax.random.normal(subkey, shape = cmb_field.shape, dtype = jnp.float64) * jnp.sqrt(nvar))**2
+noise_truth_1 = (jax.random.normal(key, shape = cmb_field.shape, dtype = jnp.float64) * jnp.sqrt(nvar)) # Z = (X-mu)/sigma where Z is standard normally distributed
+noise_truth_2 = (jax.random.normal(subkey, shape = cmb_field.shape, dtype = jnp.float64) * jnp.sqrt(nvar))
 
 cmb_alms = hp.map2alm(np.asarray(cmb_field), lmax = 2 * c['nside'], mmax = 2 * c['nside'])
 
@@ -67,14 +67,26 @@ result_ps, result_alm = gibbs(iter = 5, init_ps= TTCl, data = all_data, noise = 
 
 # data1_cl = hp.alm2cl(alms1 = hp.map2alm(np.asarray(data_1), lmax = 2 * c['nside']), lmax = 2*c['nside'])
 
-# plt.plot(jnp.arange(data1_cl.shape[0]), data1_cl)
-# plt.xscale('log')
+# plt.plot(jnp.arange(data1_cl.shape[0]), data1_cl, label = 'data_1')
 
+# data2_cl = hp.alm2cl(alms1 = hp.map2alm(np.asarray(data_2), lmax = 2 * c['nside']), lmax = 2*c['nside'])
+
+# noise1_cl = hp.alm2cl(alms1 = hp.map2alm(np.asarray(noise_truth_1), lmax = 2 * c['nside']), lmax = 2 * c['nside'])
+
+# noise2_cl = hp.alm2cl(alms1 = hp.map2alm(np.asarray(noise_truth_2), lmax = 2 * c['nside']), lmax = 2 * c['nside'])
+
+# plt.plot(jnp.arange(data2_cl.shape[0]), data2_cl, label = 'data_2')
 # cmb_cl = hp.alm2cl(alms1 = hp.map2alm(np.asarray(cmb_field), lmax = 2 * c['nside']), lmax = 2*c['nside'])
-# plt.plot(jnp.arange(cmb_cl.shape[0]), cmb_cl)
+# plt.plot(jnp.arange(cmb_cl.shape[0]), cmb_cl, label = 'cmb')
+
+
+# plt.plot(jnp.arange(noise1_cl.shape[0]), noise1_cl, label = 'noise_1')
+
+# plt.plot(jnp.arange(noise2_cl.shape[0]), noise2_cl, label = 'noise_2')
+
 # plt.xscale('log')
 
-# hp.mollview(hp.alm2map(result_alm, nside = c['nside'], lmax = 2 * c['nside'])*1e6, norm = 'hist')
+# plt.legend()
 
 
 

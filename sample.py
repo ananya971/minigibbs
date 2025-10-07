@@ -1,4 +1,3 @@
-from cg_no_pc import CGNoPrecon
 import jax 
 import json 
 import healpy as hp 
@@ -53,7 +52,7 @@ def Cl_given_s_healpy(alms, nside):
     lmax = 2 * nside
     sig_ps = get_sig_ps_healpy(alms)
     key = jax.random.PRNGKey(c['seed'])
-    subkey = jax.random.split(key, num=2*lmax-1)
+    subkey = jax.random.split(key, num=lmax+1)
     rho_sq = jnp.zeros(shape = lmax+1)
     for ell in range(0,lmax+1):
         rn = jax.random.normal(subkey[ell], shape = (2*ell-1,)) if ell>0 else jax.random.normal(subkey[ell])
@@ -69,6 +68,27 @@ def Cl_given_s_healpy(alms, nside):
     plt.xscale('log')
     plt.yscale('log')
     plt.show()
+    return C_ell
+
+def Cl_given_s_numpy(alms, nside):
+    '''Cl function without jax generated random numbers. So statefull.'''
+    lmax = 2 * nside
+    sig_ps = get_sig_ps_healpy(alms)
+    rho_sq = np.zeros(shape = lmax+1)
+    for ell in range(0, lmax+1):
+        rn = np.random.standard_normal(size = (2*ell-1,)) if ell>0 else np.random.standard_normal()
+        rn_mod = [np.abs(i) for i in rn] if ell>0 else np.abs(rn)**2
+        rho_ell = np.sum(rn_mod) if ell>0 else rn_mod
+        rho_sq[ell] = rho_ell
+    C_ell = sig_ps/rho_sq
+    D_ell = Cl_to_Dl(C_ell)
+
+    plt.figure()
+
+    plt.plot(np.arange(C_ell.shape[0]), D_ell)
+    plt.xscale('log')
+    plt.close()
+
     return C_ell
 
 
@@ -129,6 +149,7 @@ def get_sig_ps_healpy(alms):
 
 def Cl_given_s_fin(alms, lmax):
     naive_Cl = hp.alm2cl(alms1 = alms, alms2 = None, lmax = lmax)
+    naive_Cl[:2] = 0
     sig_ell = (2 * np.arange(0, lmax+1) + 1) * naive_Cl
     key = jax.random.PRNGKey(c['seed'])
     subkey = jax.random.split(key, num=lmax+1)
@@ -147,8 +168,9 @@ def gibbs(iter, init_ps, data, noise, nside):
         signal_alm = CG(c, data, noise, ps)()
         result_pix = hp.alm2map(np.asarray(signal_alm), nside = c['nside'], lmax= 2 * nside)
         hp.mollview(result_pix*1e6, norm = 'hist', title = f'{i=}', unit = 'uK')
-        C_ell = Cl_given_s_healpy(np.asarray(signal_alm), nside = nside) # init_signal in pixel space
-        ps = C_ell # power spectrum is the initial power spectrum for i = 0, then later is the sampled power spectrum
+        C_ell = Cl_given_s_numpy(np.asarray(signal_alm), nside = nside) # init_signal in pixel space
+        ps = C_ell 
+        # print(f'{ps=}')# power spectrum is the initial power spectrum for i = 0, then later is the sampled power spectrum
         plt.figure()
         plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(C_ell), label = 'D_ell check')
         # plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(ps), label = 'ps check')

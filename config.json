@@ -2,7 +2,7 @@
     "nside":128,
     "nfreqs":2,
     "distances":1, 
-    "seed":42,
+    "seed":100,
     "freqs": [30000000000.0],
     "stokes": ["I", "Q", "U"]
 }
