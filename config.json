@@ -4,5 +4,6 @@
     "distances":1, 
     "seed":100,
     "freqs": [30000000000.0],
-    "stokes": ["I", "Q", "U"]
+    "stokes": ["I", "Q", "U"],
+    "show_plots": true
 }

@@ -9,6 +9,7 @@ from nifty.re import cg
 from cg import CG
 import matplotlib.pyplot as plt
 import camb
+from plotting import plot_map, plot_c_ells
 
 c = load_config()
 
@@ -81,13 +82,14 @@ def Cl_given_s_numpy(alms, nside):
         rho_ell = np.sum(rn_mod) if ell>0 else rn_mod
         rho_sq[ell] = rho_ell
     C_ell = sig_ps/rho_sq
-    D_ell = Cl_to_Dl(C_ell)
+#    D_ell = Cl_to_Dl(C_ell)
 
-    plt.figure()
+#    plt.figure()
 
-    plt.plot(np.arange(C_ell.shape[0]), D_ell)
-    plt.xscale('log')
-    plt.close()
+#    plt.plot(np.arange(C_ell.shape[0]), D_ell)
+#    plt.xscale('log')
+#    plt.savefig(f'cells_{it}.png')
+#    plt.close()
 
     return C_ell
 
@@ -167,16 +169,21 @@ def gibbs(iter, init_ps, data, noise, nside):
     for i in range(iter):
         signal_alm = CG(c, data, noise, ps)()
         result_pix = hp.alm2map(np.asarray(signal_alm), nside = c['nside'], lmax= 2 * nside)
-        hp.mollview(result_pix*1e6, norm = 'hist', title = f'{i=}', unit = 'uK')
+        plot_map(result_pix*1e6, norm='hist', title=f'{i=}', unit='uK',
+                 show=c['show_plots'], fname=f'map_{i}.png')
+#        hp.mollview(result_pix*1e6, norm = 'hist', title = f'{i=}', unit = 'uK', )
+#        plt.savefig(f'map_{i}.png')
         C_ell = Cl_given_s_numpy(np.asarray(signal_alm), nside = nside) # init_signal in pixel space
         ps = C_ell 
         # print(f'{ps=}')# power spectrum is the initial power spectrum for i = 0, then later is the sampled power spectrum
         plt.figure()
-        plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(C_ell), label = 'D_ell check')
-        # plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(ps), label = 'ps check')
-        plt.legend()
-        plt.xscale('log')
-        plt.show()
+        plot_c_ells(Cl_to_Dl(C_ell), label='D_ell check', logx=True,
+                    legend=True, show=c['show_plots'], fname=f'D_ell_{i}.png')
+#        plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(C_ell), label = 'D_ell check')
+#        # plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(ps), label = 'ps check')
+#        plt.legend()
+#        plt.xscale('log')
+#        plt.show()
         # plt.figure()
         # plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(C_ell), label = 'D_ell')
         # plt.plot(np.arange(C_ell.shape[0]), TTDl, label = 'TTDl')
