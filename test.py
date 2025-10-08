@@ -38,10 +38,10 @@ cmb_field = cmb_model(input)[0][0]
 
 key, subkey = jax.random.split(key, num= 2)
 
-nvar = 8e-11
+nstd = 1e-4
 
-noise_truth_1 = (jax.random.normal(key, shape = cmb_field.shape, dtype = jnp.float64) * jnp.sqrt(nvar)) # Z = (X-mu)/sigma where Z is standard normally distributed
-noise_truth_2 = (jax.random.normal(subkey, shape = cmb_field.shape, dtype = jnp.float64) * jnp.sqrt(nvar))
+noise_truth_1 = (jax.random.normal(key, shape = cmb_field.shape, dtype = jnp.float64) * nstd) # Z = (X-mu)/sigma where Z is standard normally distributed
+noise_truth_2 = (jax.random.normal(subkey, shape = cmb_field.shape, dtype = jnp.float64) * nstd)
 
 cmb_alms = hp.map2alm(np.asarray(cmb_field), lmax = 2 * c['nside'], mmax = 2 * c['nside'])
 
@@ -59,7 +59,7 @@ assert all_data.shape == all_noise.shape, "Data and noise shapes do not match!"
 cmb_alms = hp.map2alm(np.asarray(cmb_field), lmax = 2 * c['nside'], mmax = 2 * c['nside'])
 
 
-result_ps, result_alm = gibbs(iter = 5, init_ps= TTCl, data = all_data, noise = jnp.ones(2*hp.nside2npix(c['nside']))*nvar, nside = c['nside']) 
+result_ps, result_alm = gibbs(iter = 5, init_ps= TTCl, data = all_data, noise = jnp.ones(2*hp.nside2npix(c['nside']))*(nstd**2), nside = c['nside']) 
 
 
 # Checking power spectra of data vs. cmb
@@ -88,7 +88,7 @@ result_ps, result_alm = gibbs(iter = 5, init_ps= TTCl, data = all_data, noise = 
 
 # plt.legend()
 
-
+# hp.mollview(data_1*1e6, norm = 'hist')
 
 
 
