@@ -32,14 +32,20 @@ class CG:
         return np.tile(spix_beam, n_freq)
     
     def adjoint_alm2map(self, x):
-        sht_T = jax.linear_transpose(jaxducc0.get_healpix_sht(nside = self.c['nside'], lmax = 2 * self.c['nside'], mmax = 2 * self.c['nside'], spin = 0, nthreads=1), jax.ShapeDtypeStruct(shape = (1, hp.Alm.getsize(lmax = 2 * self.c['nside'])), dtype=jnp.complex128))
-        print("Output structure:", tree_structure(x))
-        return jnp.conj(sht_T(x))
+        x = list(x.reshape((1,1,x.shape[0])))
+        sht = jaxducc0.get_healpix_sht(nside = self.c['nside'], lmax = 2 * self.c['nside'], mmax = 2 * self.c['nside'], spin = 0, nthreads=1) 
+        alms = jnp.ones(hp.Alm.getsize(lmax = 2 * c['nside']), dtype = jnp.complex128)
+        alms = alms.reshape((1, alms.shape[0]))
+        sht_T = jax.linear_transpose(sht, jaxducc0._alm2realalm(alms, lmax = 2 * self.c['nside'], dtype = jnp.float64))
+        # sht = jaxducc0.get_healpix_sht(nside = self.c['nside'], lmax = 2 * self.c['nside'], mmax = 2 * self.c['nside'], spin = 0, nthreads=1)
+        # sht_T = jax.linear_transpose(sht)
+        y = sht_T(x)
+        return jaxducc0._realalm2alm(y[0], lmax = 2 * self.c['nside'], dtype = jnp.complex128)
 
     def apply_A_transpose(self, stacked, n_freq):
         s_summed = stacked.reshape(n_freq, self.npix).sum(axis = 0)
         spix_summed = self.adjoint_alm2map(jnp.asarray(s_summed))
-        s_beamed = hp.almxfl(alm = spix_summed, fl = self.Al)
+        s_beamed = hp.almxfl(alm = spix_summed[0], fl = self.Al)
         return s_beamed
     
 
@@ -70,10 +76,10 @@ class CG:
     def apply_cg(self):
         rhs = self.rhs()
         init_sig = hp.synalm(self.C_ell, lmax = 2 * self.c['nside'])
-        return cg(self.apply_mat, rhs, miniter = 500, x0 = init_sig )#name = 'CG')
+        return cg(self.apply_mat, rhs, absdelta= 6e-9, x0 = init_sig ,name = 'CG')
 
     def __call__(self):
-        cg_res = np.asarray(self.apply_cg())
+        cg_res = np.asarray(self.apply_cg()[0])
         final_alm = hp.almxfl(cg_res, np.sqrt(self.C_ell))
         return final_alm
 
