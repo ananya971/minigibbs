@@ -9,6 +9,7 @@ def plot_map(m, norm='hist', title='', unit='', min=None, max=None,
         plt.show()
     else:
         plt.savefig(fname, bbox_inches='tight')
+        plt.close()
 
 
 def plot_c_ells(c_ell, logx=True, label='', legend=False, show=True,
@@ -24,3 +25,4 @@ def plot_c_ells(c_ell, logx=True, label='', legend=False, show=True,
             plt.show()
         else:
             plt.savefig(fname, bbox_inches='tight')
+            plt.close()
