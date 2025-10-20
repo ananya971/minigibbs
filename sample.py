@@ -1,11 +1,8 @@
 import jax 
-import json 
 import healpy as hp 
-from jax import random
 import jax.numpy as jnp
 import numpy as np
 from utils import Cl_to_Dl, Dl_to_Cl, load_config
-from nifty.re import cg 
 from cg import CG
 import matplotlib.pyplot as plt
 import camb
@@ -52,7 +49,8 @@ def Cl_given_s_healpy(alms, nside):
     "Healpy compliant", so using only the alms values for m>=0 as healpy returns.'''
     lmax = 2 * nside
     sig_ps = get_sig_ps_healpy(alms)
-    key = jax.random.PRNGKey(c['seed'])
+    np_seed = np.random.randint(0, 2**32-1)
+    key = jax.random.PRNGKey(np_seed)
     subkey = jax.random.split(key, num=lmax+1)
     rho_sq = jnp.zeros(shape = lmax+1)
     for ell in range(0,lmax+1):
@@ -61,18 +59,19 @@ def Cl_given_s_healpy(alms, nside):
         rho_ell = np.sum(rn_mod) if ell>0 else rn_mod
         rho_sq = rho_sq.at[ell].set(rho_ell)
     C_ell = sig_ps/rho_sq
-    plt.figure()
-    plt.plot(jnp.arange(sig_ps.shape[0]), sig_ps, label = 'sig_ps')
-    plt.plot(jnp.arange(rho_sq.shape[0]), rho_sq, label = 'rho_sq')
-    plt.plot(jnp.arange(C_ell.shape[0]), C_ell, label = 'C_ell')
-    plt.legend()
-    plt.xscale('log')
-    plt.yscale('log')
-    plt.show()
+    C_ell = C_ell.at[:2].set(0.)
+    # plt.figure()
+    # plt.plot(jnp.arange(sig_ps.shape[0]), sig_ps, label = 'sig_ps')
+    # plt.plot(jnp.arange(rho_sq.shape[0]), rho_sq, label = 'rho_sq')
+    # plt.plot(jnp.arange(C_ell.shape[0]), C_ell, label = 'C_ell')
+    # plt.legend()
+    # plt.xscale('log')
+    # plt.yscale('log')
+    # plt.show()
     return C_ell
 
 def Cl_given_s_numpy(alms, nside):
-    '''Cl function without jax generated random numbers. So statefull.'''
+    '''Cl function without jax generated random numbers. Stateful.'''
     lmax = 2 * nside
     sig_ps = get_sig_ps_healpy(alms)
     rho_sq = np.zeros(shape = lmax+1)
@@ -82,15 +81,7 @@ def Cl_given_s_numpy(alms, nside):
         rho_ell = np.sum(rn_mod) if ell>0 else rn_mod
         rho_sq[ell] = rho_ell
     C_ell = sig_ps/rho_sq
-#    D_ell = Cl_to_Dl(C_ell)
-
-#    plt.figure()
-
-#    plt.plot(np.arange(C_ell.shape[0]), D_ell)
-#    plt.xscale('log')
-#    plt.savefig(f'cells_{it}.png')
-#    plt.close()
-
+    C_ell = C_ell.at[:2].set(0.)
     return C_ell
 
 
@@ -171,26 +162,11 @@ def gibbs(iter, init_ps, data, noise, nside):
         result_pix = hp.alm2map(np.asarray(signal_alm), nside = c['nside'], lmax= 2 * nside)
         plot_map(result_pix*1e6, norm='hist', title=f'{i=}', unit='uK',
                  show=c['show_plots'], fname=f'map_{i}.png')
-#        hp.mollview(result_pix*1e6, norm = 'hist', title = f'{i=}', unit = 'uK', )
-#        plt.savefig(f'map_{i}.png')
         C_ell = Cl_given_s_numpy(np.asarray(signal_alm), nside = nside) # init_signal in pixel space
         ps = C_ell 
-        # print(f'{ps=}')# power spectrum is the initial power spectrum for i = 0, then later is the sampled power spectrum
         plt.figure()
         plot_c_ells(Cl_to_Dl(C_ell), label='D_ell check', logx=True,
                     legend=True, show=c['show_plots'], fname=f'D_ell_{i}.png')
-#        plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(C_ell), label = 'D_ell check')
-#        # plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(ps), label = 'ps check')
-#        plt.legend()
-#        plt.xscale('log')
-#        plt.show()
-        # plt.figure()
-        # plt.plot(jnp.arange(C_ell.shape[0]), Cl_to_Dl(C_ell), label = 'D_ell')
-        # plt.plot(np.arange(C_ell.shape[0]), TTDl, label = 'TTDl')
-        # plt.legend()
-        # plt.title(f'D_ell iteration {i}')
-        # plt.xscale('log')
-        # plt.show()
     
     return C_ell, signal_alm
 

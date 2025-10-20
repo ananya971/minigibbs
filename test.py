@@ -10,6 +10,9 @@ from utils import Dl_to_Cl
 import jax.numpy as jnp
 from plotting import plot_map
 
+jax.config.update("jax_enable_x64", True)
+
+
 c = load_config()
 
 pars = camb.set_params(H0=67.72,
@@ -29,7 +32,6 @@ power_spec = powers["total"]
 TTCl = Dl_to_Cl(power_spec[:, 0]) 
 
 seed = c['seed']
-
 key = jax.random.PRNGKey(seed)
 cmb_model = CMB(c=c)
 
@@ -62,16 +64,13 @@ plot_map(data_2*1e6, norm='hist', title=f'data_2', unit='uK',
          show=c['show_plots'], fname=f'data_2.png')
 
 all_data = np.append(data_1, data_2)
-all_noise = np.append(noise_truth_1, noise_truth_2)
-
-assert all_data.shape == all_noise.shape, "Data and noise shapes do not match!"
 
 # Sample from C_ell
 
 cmb_alms = hp.map2alm(np.asarray(cmb_field), lmax = 2 * c['nside'], mmax = 2 * c['nside'])
 
 
-result_ps, result_alm = gibbs(iter = 5, init_ps= TTCl, data = all_data, noise = jnp.ones(2*hp.nside2npix(c['nside']))*(nstd**2), nside = c['nside']) 
+# result_ps, result_alm = gibbs(iter = 10, init_ps= TTCl, data = all_data, noise =nstd**2, nside = c['nside']) 
 
 
 # Checking power spectra of data vs. cmb
@@ -102,6 +101,40 @@ result_ps, result_alm = gibbs(iter = 5, init_ps= TTCl, data = all_data, noise = 
 
 # hp.mollview(data_1*1e6, norm = 'hist')
 
+# from cg import CG
+
+# cgob = CG(c, all_data, nstd**2, TTCl)
+# apply_mat = cgob.apply_mat
+
+# from jax import random 
+
+
+
+# def is_positive_definite_operator(A_func, domain, key=random.PRNGKey(0), num_tests=5):
+#     """Check if positive definite."""
+#     for i in range(num_tests):
+#         key, subkey = random.split(key)
+#         x = jft.random_like(subkey, domain)
+#         xAx = jnp.vdot(x, A_func(x))
+#         if xAx <= 0:
+#             return False
+#     return True
+
+# is_positive_definite_operator(apply_mat, jax.ShapeDtypeStruct(shape = (hp.Alm.getsize(lmax = 2 * c['nside'], mmax = 2 * c['nside']),), dtype = jnp.float64))
+
+# def is_symmetric_operator(A_func, domain, key=random.PRNGKey(0), num_tests=5, tol=1e-14):
+#     """Check if symmetric."""
+#     for i in range(num_tests):
+#         subkey1, subkey2, key = random.split(key, 3)
+#         x = jft.random_like(subkey1, domain)
+#         y = jft.random_like(subkey2, domain)
+#         a1 = jnp.vdot(x, A_func(y))
+#         a2 = jnp.vdot(y, A_func(x))
+#         if not jnp.allclose(a1, a2, atol=tol):
+#             return False
+#     return True
+
+# is_symmetric_operator(apply_mat, jax.ShapeDtypeStruct(shape = (hp.Alm.getsize(lmax = 2 * c['nside'], mmax = 2 * c['nside']),), dtype = jnp.float64))
 
 
 
