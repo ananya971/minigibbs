@@ -25,20 +25,20 @@ class CG:
         self.beam = hp.gauss_beam(fwhm = self.res, lmax = 2 * self.c['nside'])
         self.pwf = hp.pixwin(nside = self.c['nside'], lmax = 2 * self.c['nside'])
         self.Al = self.beam*self.pwf
+        self.sht = jaxducc0.get_healpix_sht(nside = self.c['nside'], lmax = 2 * self.c['nside'], mmax = 2 * self.c['nside'], spin = 0, nthreads=1) 
     
     def apply_A(self, s, n_freq):
         s_beam = hp.almxfl(alm = s, fl = self.Al)
-        spix_beam = hp.alm2map(s_beam, nside = self.c['nside'], lmax = 2 * self.c['nside'])
-        return np.tile(spix_beam, n_freq)
+        s_beam = s_beam.reshape((1, s_beam.shape[0]))
+        s_beam = jaxducc0._alm2realalm(s_beam, lmax = 2 * self.c['nside'], dtype = jnp.float64)
+        spix_beam = self.sht(s_beam)
+        return np.tile(spix_beam[0][0], n_freq)
     
     def adjoint_alm2map(self, x):
         x = list(x.reshape((1,1,x.shape[0])))
-        sht = jaxducc0.get_healpix_sht(nside = self.c['nside'], lmax = 2 * self.c['nside'], mmax = 2 * self.c['nside'], spin = 0, nthreads=1) 
         alms = jnp.ones(hp.Alm.getsize(lmax = 2 * c['nside']), dtype = jnp.complex128)
         alms = alms.reshape((1, alms.shape[0]))
-        sht_T = jax.linear_transpose(sht, jaxducc0._alm2realalm(alms, lmax = 2 * self.c['nside'], dtype = jnp.float64))
-        # sht = jaxducc0.get_healpix_sht(nside = self.c['nside'], lmax = 2 * self.c['nside'], mmax = 2 * self.c['nside'], spin = 0, nthreads=1)
-        # sht_T = jax.linear_transpose(sht)
+        sht_T = jax.linear_transpose(self.sht, jaxducc0._alm2realalm(alms, lmax = 2 * self.c['nside'], dtype = jnp.float64))
         y = sht_T(x)
         return jaxducc0._realalm2alm(y[0], lmax = 2 * self.c['nside'], dtype = jnp.complex128)
 
@@ -76,7 +76,7 @@ class CG:
     def apply_cg(self):
         rhs = self.rhs()
         init_sig = hp.synalm(self.C_ell, lmax = 2 * self.c['nside'])
-        return cg(self.apply_mat, rhs, absdelta= 6e-9, x0 = init_sig ,name = 'CG')
+        return cg(self.apply_mat, rhs, absdelta= 6e-9, x0 = init_sig ,name = 'CG', _raise_nonposdef = False)
 
     def __call__(self):
         cg_res = np.asarray(self.apply_cg()[0])
