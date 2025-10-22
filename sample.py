@@ -2,30 +2,12 @@ import jax
 import healpy as hp 
 import jax.numpy as jnp
 import numpy as np
-from utils import Cl_to_Dl, Dl_to_Cl, load_config
+from utils import Cl_to_Dl, load_config
 from cg import CG
 import matplotlib.pyplot as plt
-import camb
 from plotting import plot_map, plot_c_ells
 
 c = load_config()
-
-pars = camb.set_params(H0=67.72,
-            ombh2=0.022,
-            omch2=0.1192,
-            mnu=0.06,
-            omk=0,
-            tau=0.054,
-            As=2.09e-9,
-            ns=0.9667,
-            halofit_version="mead",
-            lmax=2 * c['nside'],
-        )
-results = camb.get_results(pars)
-powers = results.get_cmb_power_spectra(pars, CMB_unit = 'K', lmax=2 * c['nside'])
-power_spec = powers["total"]
-TTDl = power_spec[:,0]
-
 
 def Cl_given_s(alms, nside):
     lmax = 2 * nside
@@ -49,7 +31,7 @@ def Cl_given_s_healpy(alms, nside):
     "Healpy compliant", so using only the alms values for m>=0 as healpy returns.'''
     lmax = 2 * nside
     sig_ps = get_sig_ps_healpy(alms)
-    np_seed = np.random.randint(0, 2**32-1)
+    np_seed = np.random.randint(0, 2**32-1) # TODO: Make this reproducible!
     key = jax.random.PRNGKey(np_seed)
     subkey = jax.random.split(key, num=lmax+1)
     rho_sq = jnp.zeros(shape = lmax+1)
@@ -60,14 +42,6 @@ def Cl_given_s_healpy(alms, nside):
         rho_sq = rho_sq.at[ell].set(rho_ell)
     C_ell = sig_ps/rho_sq
     C_ell = C_ell.at[:2].set(0.)
-    # plt.figure()
-    # plt.plot(jnp.arange(sig_ps.shape[0]), sig_ps, label = 'sig_ps')
-    # plt.plot(jnp.arange(rho_sq.shape[0]), rho_sq, label = 'rho_sq')
-    # plt.plot(jnp.arange(C_ell.shape[0]), C_ell, label = 'C_ell')
-    # plt.legend()
-    # plt.xscale('log')
-    # plt.yscale('log')
-    # plt.show()
     return C_ell
 
 def Cl_given_s_numpy(alms, nside):
@@ -85,7 +59,6 @@ def Cl_given_s_numpy(alms, nside):
     return C_ell
 
 
-
 def expand_alms(alms, lmax):
     '''Expand a set of a_lm values returned by healpy for m>=0, and convert to a full set of alm values of size (lmax+1)**2
     
@@ -98,7 +71,6 @@ def expand_alms(alms, lmax):
     Returns:
     ordered : An array of alms of shape (lmax+1)**2
      '''
-    # Try with jax thingys
     assert int((lmax * (lmax+1))/2 + lmax + 1) == alms.shape[0], "Shape of alms do not match given lmax"
     ordered = jnp.zeros(shape= (lmax+1)**2, dtype = jnp.complex128)
     for ell in range(lmax+1):
@@ -162,7 +134,7 @@ def gibbs(iter, init_ps, data, noise, nside):
         result_pix = hp.alm2map(np.asarray(signal_alm), nside = c['nside'], lmax= 2 * nside)
         plot_map(result_pix*1e6, norm='hist', title=f'{i=}', unit='uK',
                  show=c['show_plots'], fname=f'map_{i}.png')
-        C_ell = Cl_given_s_numpy(np.asarray(signal_alm), nside = nside) # init_signal in pixel space
+        C_ell = Cl_given_s_healpy(np.asarray(signal_alm), nside = nside) # init_signal in pixel space
         ps = C_ell 
         plt.figure()
         plot_c_ells(Cl_to_Dl(C_ell), label='D_ell check', logx=True,

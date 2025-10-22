@@ -1,8 +1,8 @@
 from jax import numpy as jnp
 import json
 import os
-
-
+import healpy as hp 
+import numpy as np
 
 def Dl_to_Cl(pow_spec):
     pow_specCl = jnp.zeros_like(pow_spec)
@@ -19,7 +19,6 @@ def Cl_to_Dl(C_ell):
     return pow_specDl
 
 
-
 def load_config():
     if os.getenv('RUN_CONFIG') == '1':
         config_path = os.getenv('CONFIG_PATH', 'config.json')
@@ -31,4 +30,9 @@ def load_config():
         return json.load(f)
 
 
-
+def make_real_alms(alms):
+        lmax = hp.Alm.getlmax(alms.shape[0])
+        for i in range (lmax+1):
+            idx = hp.Alm.getidx(lmax, i, m = 0)
+            alms = alms.at[idx].set(np.real(alms[idx])+0j)
+        return alms
