@@ -36,7 +36,7 @@ class CMB(jft.Model):
         self.BBCl = Dl_to_Cl(self.power_spec[:, 2])
 
         # Construct the coeffs of alm's
-        self.alm_T = jnp.sqrt(self.TTCl / 2)
+        self.alm_T = jnp.sqrt(self.TTCl)
         self.alm_T = self.alm_T[
             : self.grid.harmonic_grid.lmax + 1
         ]  # Truncate to nifty's lmax

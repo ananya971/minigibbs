@@ -6,7 +6,6 @@ import jax
 from utils import load_config
 from nifty.re import cg
 import jaxbind.contrib.jaxducc0 as jaxducc0
-from jax.tree_util import tree_structure
 
 c= load_config()
 
@@ -21,7 +20,7 @@ class CG:
         self.C_ell = C_ell
         self.npix = hp.nside2npix(self.c['nside'])
         self.ps = self.C_ell.shape[0]
-        self.res = hp.nside2resol(nside = self.c['nside']) #[rad]
+        self.res = 2 * hp.nside2resol(nside = self.c['nside']) #[rad]
         self.beam = hp.gauss_beam(fwhm = self.res, lmax = 2 * self.c['nside'])
         self.pwf = hp.pixwin(nside = self.c['nside'], lmax = 2 * self.c['nside'])
         self.Al = self.beam*self.pwf
@@ -32,7 +31,7 @@ class CG:
         s_beam = s_beam.reshape((1, s_beam.shape[0]))
         s_beam = jaxducc0._alm2realalm(s_beam, lmax = 2 * self.c['nside'], dtype = jnp.float64)
         spix_beam = self.sht(s_beam)
-        return np.tile(spix_beam[0][0], n_freq)
+        return jnp.tile(spix_beam[0][0], n_freq)
     
     def adjoint_alm2map(self, x):
         x = list(x.reshape((1,1,x.shape[0])))
@@ -47,10 +46,9 @@ class CG:
         spix_summed = self.adjoint_alm2map(jnp.asarray(s_summed))
         s_beamed = hp.almxfl(alm = spix_summed[0], fl = self.Al)
         return s_beamed
-    
 
     def apply_mat(self,x):
-        '''Apply matrix, finish doc'''
+        '''Apply operator'''
         x = np.asarray(x)
         alm_cl = hp.almxfl(alm = x, fl = np.sqrt(self.C_ell)) # S^(1/2)x
         A_pix_alm = self.apply_A(alm_cl, self.c['nfreqs'])
@@ -76,7 +74,7 @@ class CG:
     def apply_cg(self):
         rhs = self.rhs()
         init_sig = hp.synalm(self.C_ell, lmax = 2 * self.c['nside'])
-        return cg(self.apply_mat, rhs, absdelta= 6e-9, x0 = init_sig ,name = 'CG', _raise_nonposdef = False)
+        return cg(self.apply_mat, rhs, absdelta= 1e-10, x0 = init_sig ,name = 'CG', _raise_nonposdef = False)
 
     def __call__(self):
         cg_res = np.asarray(self.apply_cg()[0])

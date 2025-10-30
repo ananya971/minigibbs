@@ -45,13 +45,12 @@ noise_truth_1 = (jax.random.normal(key, shape = cmb_field.shape, dtype = jnp.flo
 noise_truth_2 = (jax.random.normal(subkey, shape = cmb_field.shape, dtype = jnp.float64) * nstd)
 
 cmb_alms = hp.map2alm(np.asarray(cmb_field), lmax = 2 * c['nside'], mmax = 2 * c['nside'])
-
-data_1 = hp.alm2map(hp.almxfl(cmb_alms, fl = hp.gauss_beam(2 * hp.nside2resol(c['nside']))), nside = c['nside'], lmax = 2 * c['nside']) + noise_truth_1 # d_1 = A(s) + n_1
-
-data_2 = hp.alm2map(hp.almxfl(cmb_alms, fl = hp.gauss_beam(2 * hp.nside2resol(nside = c['nside']))), nside = c['nside'], lmax = 2 * c['nside']) + noise_truth_2 # d_2 = A(s) + n_2
+res = 2 * hp.nside2resol(nside = c['nside'])
+data_1 = hp.alm2map(hp.almxfl(cmb_alms, fl = hp.gauss_beam(fwhm = res, lmax = 2 * c['nside'])), nside = c['nside'], lmax = 2 * c['nside']) + noise_truth_1 # d_1 = A(s) + n_1
+data_2 = hp.alm2map(hp.almxfl(cmb_alms, fl = hp.gauss_beam(fwhm = res, lmax = 2 * c['nside'])), nside = c['nside'], lmax = 2 * c['nside']) + noise_truth_2 # d_2 = A(s) + n_2
 
 all_data = np.append(data_1, data_2)
 
 cmb_alms = hp.map2alm(np.asarray(cmb_field), lmax = 2 * c['nside'], mmax = 2 * c['nside'])
 
-result_ps, result_alm = gibbs(iter = 10, init_ps= TTCl, data = all_data, noise =nstd**2, nside = c['nside']) 
+result_ps, result_alm = gibbs(iter = 15, init_ps= TTCl, data = all_data, noise =nstd**2, nside = c['nside']) 

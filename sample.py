@@ -129,6 +129,8 @@ def Cl_given_s_fin(alms, lmax):
 
 def gibbs(iter, init_ps, data, noise, nside):
     ps = init_ps
+    smp_C_ell = []
+    smp_salm = []
     for i in range(iter):
         signal_alm = CG(c, data, noise, ps)()
         result_pix = hp.alm2map(np.asarray(signal_alm), nside = c['nside'], lmax= 2 * nside)
@@ -139,8 +141,12 @@ def gibbs(iter, init_ps, data, noise, nside):
         plt.figure()
         plot_c_ells(Cl_to_Dl(C_ell), label='D_ell check', logx=True,
                     legend=True, show=c['show_plots'], fname=f'D_ell_{i}.png')
+        
+        if iter-i <=10:
+            smp_C_ell.append(C_ell)
+            smp_salm.append(signal_alm)
     
-    return C_ell, signal_alm
+    return smp_C_ell, smp_salm
 
 
 
