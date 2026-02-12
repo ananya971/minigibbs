@@ -1,9 +1,21 @@
 {
-    "nside":256,
+    "nside":64,
     "nfreqs":2,
     "distances":1, 
     "seed":100,
-    "freqs": [30000000000.0],
+    "freqs": [30000000000.0, 44000000000.0],
     "stokes": ["I", "Q", "U"],
-    "show_plots": true
+    "show_plots": true,
+    "data":{}, 
+    "components": {
+        "synchrotron": {
+            "flavour":"temp",
+            "_flavour_comment": "Choose from tempspec or temp for diffuse components",
+            "alpha":0.26
+
+        },
+        "freefree": {
+            "flavour":"temp"
+        }
+    }
 }
