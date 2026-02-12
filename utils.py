@@ -3,6 +3,7 @@ import json
 import os
 import healpy as hp 
 import numpy as np
+from scipy import constants
 
 def Dl_to_Cl(pow_spec):
     pow_specCl = jnp.zeros_like(pow_spec)
@@ -36,3 +37,10 @@ def make_real_alms(alms):
             idx = hp.Alm.getidx(lmax, i, m = 0)
             alms = alms.at[idx].set(np.real(alms[idx])+0j)
         return alms
+
+def kcmb_to_krj(maps, nus, T0 = 2.7255):
+    gamma = constants.Planck * nus / (constants.Boltzmann * T0)
+    factor = (gamma**2 * jnp.exp(gamma))/ (jnp.expm1(gamma)**2)
+    maps[0,:,:] *= factor
+
+    return maps

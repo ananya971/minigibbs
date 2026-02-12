@@ -5,17 +5,17 @@ import jax
 
 
 class FreeFree:
-    def __init__(self, c, file, Ninv, data):
+    def __init__(self, c, file, Ninv):
         self.c = c 
         self.nus = np.asarray(c['freqs'])
         self.file = file 
         self.npix = hp.nside2npix(self.c['nside'])
         self.Ninv = Ninv
-        self.data = data
+        self.nside = self.c['nside']
         
     def read_maps(self):
-        EM_ff = jnp.asarray(hp.read_map(self.file, field= 1), dtype = jnp.float64)
-        tempy = jnp.asarray(hp.read_map(self.file, field= 4), dtype = jnp.float64)
+        EM_ff = jnp.asarray(hp.ud_grade(hp.read_map(self.file, field= 1), dtype = jnp.float64, nside_out=self.nside))
+        tempy = jnp.asarray(hp.ud_grade(hp.read_map(self.file, field= 4), dtype = jnp.float64, nside_out=self.nside))
         return EM_ff, tempy
 
     def freefree_comm(self):
@@ -27,17 +27,17 @@ class FreeFree:
         free_free = temp * (-1 * jnp.expm1(-tau))
         return free_free
     
-    def get_rhs(self):
-        omega0 = jax.random.normal(key = jax.random.PRNGKey(self.c['seed']), shape = (self.npix,), dtype = jnp.float64)
-        term_1 = self.freefree_comm().T * jnp.sqrt(self.Ninv) * omega0
-        term_2a = self.Ninv * self.data
-        term_2 = self.freefree_comm().T * term_2a 
+    def get_rhs(self, data):
+        omega0 = jax.random.normal(key = jax.random.PRNGKey(self.c['seed']), shape = (len(self.nus), self.npix), dtype = jnp.float64)
+        term_1 = jnp.sqrt(self.Ninv) * jnp.einsum('ij,ji', self.freefree_comm().T, omega0)
+        term_2a = self.Ninv * data
+        term_2 = jnp.einsum('ij,ji', self.freefree_comm().T, term_2a)
 
-        return term_1, term_2
+        return term_1 + term_2
 
-    def __call__(self):
+    def __call__(self, data):
         if self.c['components']['freefree']['flavour'] == 'temp':
-            return self.freefree_comm(), self.get_rhs()
+            return  self.get_rhs(data)
         elif self.c['components']['free']['flavour'] == 'tempspec':
             raise NotImplementedError
 
