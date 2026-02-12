@@ -1,5 +1,17 @@
 __pycache__/
 
-# Ignore all notebooks 
+/*.ipynb
 
-*.ipynb
+# Ignore data 
+
+data/
+
+PhD Seminars/*/*.aux
+PhD Seminars/*/*.fdb_latexmk
+PhD Seminars/*/*.fls
+PhD Seminars/*/*.log
+PhD Seminars/*/*.synctex.gz
+PhD Seminars/*/*.out
+PhD Seminars/*/*.tex
+
+requirements.txt
