@@ -6,10 +6,14 @@ import jax
 from utils import load_config
 from nifty.re import cg
 import jaxbind.contrib.jaxducc0 as jaxducc0
+from scipy.sparse.linalg import LinearOperator
 
 c= load_config()
 
 key = jax.random.PRNGKey(c['seed'])
+
+# Add components to config file and their "flavour": simple template or learnable spectral indices, and make an array with 
+# such a shape already in the function. 
 
 class CG:
     def __init__(self, c, data, noise, C_ell):
@@ -57,7 +61,7 @@ class CG:
         CATNA_alm = hp.almxfl(ATNA_pix, fl = np.sqrt(self.C_ell))
         return CATNA_alm + x
     
-    def rhs(self):
+    def rhs_cmb(self):
         term_1a = self.Ninv * self.data
         term_1b = self.apply_A_transpose(term_1a, self.c['nfreqs'])
         term_1 = hp.almxfl(term_1b, fl = np.sqrt(self.C_ell)) # C^1/2 AN^-1d
@@ -69,11 +73,14 @@ class CG:
         term_2 = hp.almxfl(term_2b, fl = np.sqrt(self.C_ell))
 
         omega0 = jft.random_like(key, jax.ShapeDtypeStruct(shape = (int((self.ps * (self.ps -1))/2 + (self.ps)) ,), dtype = jnp.complex64))
+
         return term_1 + term_2 + np.asarray(omega0)
+
     
     def apply_cg(self):
-        rhs = self.rhs()
+        rhs = self.rhs_cmb()
         init_sig = hp.synalm(self.C_ell, lmax = 2 * self.c['nside'])
+        print(init_sig)
         return cg(self.apply_mat, rhs, absdelta= 1e-10, x0 = init_sig ,name = 'CG', _raise_nonposdef = False)
 
     def __call__(self):

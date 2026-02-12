@@ -4,6 +4,7 @@ from utils import Dl_to_Cl
 from jaxbind.contrib.jaxducc0 import get_healpix_sht
 import camb
 import jax
+
 jax.config.update("jax_enable_x64", True)
 
 class CMB(jft.Model):
@@ -107,7 +108,8 @@ class CMB(jft.Model):
         qu = qu if 'Q' in self.c['stokes'] else qu.at[0].mul(0.)
         qu = qu if 'U' in self.c['stokes'] else qu.at[1].mul(0.)
         input_T = self.alm_T * xi_T
-        input_T = jnp.reshape(input_T, (1, jnp.shape(input_T)[0]))
+        input_T = jnp.expand_dims(input_T, 0)
+        print(f'{input_T=}')
         i = jnp.array(sht(input_T))[0] # Shape modifications for valid input to `sht`
         i = i if 'I' in self.c['stokes'] else jnp.zeros(jnp.shape(i))
         fields = jnp.vstack((i, qu))
