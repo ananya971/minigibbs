@@ -80,7 +80,6 @@ class CG:
     def apply_cg(self):
         rhs = self.rhs_cmb()
         init_sig = hp.synalm(self.C_ell, lmax = 2 * self.c['nside'])
-        print(init_sig)
         return cg(self.apply_mat, rhs, absdelta= 1e-10, x0 = init_sig ,name = 'CG', _raise_nonposdef = False)
 
     def __call__(self):

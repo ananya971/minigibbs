@@ -16,6 +16,7 @@ from nifty.re import cg
 from jax import tree_util
 from typing import List
 from jax.scipy.sparse.linalg import cg
+from scipy.optimize import minimize
 
 c = load_config()
 
@@ -84,10 +85,21 @@ data_beamed = (
 ff_rhs = ff(data=data_beamed)
 synch_rhs = synch(data=data_beamed)
 
+def realalm2alm_jax(alm_real: jnp.ndarray, lmax: int, dtype=jnp.complex128):
+    # alm_real: (batch, nreal) float64
+    head = alm_real[:, :lmax+1].astype(dtype)  # imag=0 implicitly
+
+    tail = alm_real[:, lmax+1:]                # float64
+    # tail must be even-length: pairs (re, im)
+    tail2 = tail.reshape(tail.shape[0], -1, 2)
+    tail_c = (tail2[..., 0] + 1j * tail2[..., 1]).astype(dtype)
+    tail_c = tail_c * (jnp.sqrt(2.0) / 2.0)
+
+    return jnp.concatenate([head, tail_c], axis=1)
 
 cmb_cg = CG(c=c, data=data_beamed, noise=nstd**2, C_ell=TTCl)
-cmb_rhs = cmb_cg.rhs_cmb()
-b = jnp.concatenate([cmb_rhs, ff_rhs.reshape(1), synch_rhs.reshape(1)])
+cmb_rhs = jaxducc0._alm2realalm(cmb_cg.rhs_cmb().reshape(1,-1), lmax=2 * c["nside"], dtype=jnp.float64)
+b = jnp.concatenate([cmb_rhs, ff_rhs.reshape(1,-1), synch_rhs.reshape(1,-1)], axis = 1)
 # b = {"complex": cmb_rhs, "real": jnp.stack([ff_rhs, synch_rhs])}
 
 signals = jnp.vstack(
@@ -120,29 +132,29 @@ def adjoint_alm2map(x):
     )
 
 
-ANF = np.asarray([
-    hp.almxfl(
+ANF = np.squeeze([
+    jaxducc0._alm2realalm(hp.almxfl(
         adjoint_alm2map(jnp.sum(nstd**-2 * signals, axis=1))[i],
         fl=hp.gauss_beam(fwhm=res, lmax=2 * c["nside"]),
-    )
+    ).reshape(1,-1), lmax=2 * c["nside"], dtype=jnp.float64)
     for i in range(len(c["freqs"]))
-]).T
-
-# FNA = np.conjugate(ANF).T
-
+], axis = 1).T
+# TODO: Add jaxducc0._alm2realalm here
+ANF = jnp.asarray(ANF)
 def FNA(x):
-    Ax = jaxducc0.get_healpix_sht(nside = c['nside'], lmax = 2 * c['nside'], mmax = 2 * c['nside'], spin = 0)(x)
-    bAx = hp.almxfl(Ax, fl = hp.gauss_beam(fwhm=res, lmax=2 * c["nside"]))
-    NbAx = nstd**-2 * bAx
-    FNAx = signals * NbAx
+    x = jaxducc0._realalm2alm(x, lmax=2 * c["nside"], dtype=jnp.complex128) 
+    bx = hp.almxfl(x[0], fl = hp.gauss_beam(fwhm=res, lmax=2 * c["nside"])).reshape(1,-1)
+    bx = jaxducc0._alm2realalm(bx, lmax=2 * c['nside'], dtype=jnp.float64)
+    Abx = jaxducc0.get_healpix_sht(nside = c['nside'], lmax = 2 * c['nside'], mmax = 2 * c['nside'], spin = 0)(bx)[0][0]
+    # bAx = hp.almxfl(Ax, fl = hp.gauss_beam(fwhm=res, lmax=2 * c["nside"]))
+    NbAx = nstd**-2 * Abx
+    # FNAx = signals * NbAx
+    FNAx = jnp.einsum('ijk, i -> k', signals.T, NbAx).reshape(1,-1)
     return FNAx
 
-x = jax.random.normal(key, hp.Alm.getsize(2 * c['nside']), jnp.float64).reshape(1,-1)
-FNA(x)
+# x = jax.random.normal(key, hp.Alm.getsize(2 * c['nside']), jnp.float64).reshape(1,-1)
+# FNA(x)
 
-
-
-#%%
 
 def apply_mat(x, Ninv, C_ell):
     """Apply operator"""
@@ -177,43 +189,39 @@ def apply_mat(x, Ninv, C_ell):
         s_beamed = hp.almxfl(alm=spix_summed[0], fl=Al)
         return s_beamed
 
-    # x = np.asarray(x)
-    alm_cl = hp.almxfl(alm=x, fl=np.sqrt(C_ell))  # S^(1/2)x
+    x = realalm2alm_jax(x, lmax=2 * c["nside"], dtype=jnp.complex128)
+    alm_cl = hp.almxfl(alm=x[0], fl=np.sqrt(C_ell))  # S^(1/2)x
     A_pix_alm = apply_A(alm_cl, c["nfreqs"], Al)
     NA_pix = Ninv * A_pix_alm
     ATNA_pix = apply_A_transpose(NA_pix, c["nfreqs"])
     CATNA_alm = hp.almxfl(ATNA_pix, fl=np.sqrt(C_ell))
-    return CATNA_alm + x
+    res = jaxducc0._alm2realalm(CATNA_alm + x, lmax=2 * c["nside"], dtype=jnp.float64).reshape(1,-1)
+    return res
 
 
 def block_op(inp, A00, A01, A10, A11):
 
-    len1 = hp.Alm.getsize(2 * c['nside'])
+
+    len1 = (2 * c['nside'] + 1)**2 # size of alm vector
     len2 =  len(c['components'].keys())
-    assert len1 + len2 == len(inp), 'Size of input is not right'
+    assert len1 + len2 == len(inp[-1]), 'Size of input is not right'
 
-    # y0 = A00(inp["complex"]) + A01 @ inp["real"]
-    # y1 = A10 @ inp["complex"] + A11 @ inp["real"]
-    y0 = A00(inp[:len1]) + A01 @ inp[-len2:]
-    y1 = A10 @ inp[:len1] + A11 @ inp[-len2:]
+    y0 = A00(inp[:, :len1]) + jnp.matmul(inp[:, -len2:], A01.T) 
+    y1 = A10(inp[:, :len1]) + jnp.matmul(inp[:, -len2:], A11.T)
 
-    res = jnp.concatenate([y0, y1])
+    res = jnp.concatenate([y0, y1], axis=1)
 
     return res
 
+# TODO: Maybe I cannot slice a traced jax array so. 
 
 apply_mat_part = partial(apply_mat, Ninv=nstd**-2, C_ell=TTCl)
 
 A = partial(block_op, A00=apply_mat_part, A01=ANF, A10=FNA, A11=FNF)
 
+init_sig = jax.random.normal(key, (2 * c['nside'] + 1)**2 + len(c['components'].keys()), dtype=jnp.float64).reshape(1,-1)
 
-# init_sig = {
-#     "complex": jax.random.normal(
-#         key, hp.Alm.getsize(lmax=2 * c["nside"]), dtype=jnp.complex128
-#     ),
-#     "real": jax.random.normal(key, 2, dtype=jnp.float64),
-# }
-init_sig = jax.random.normal(key, hp.Alm.getsize(lmax=2 * c["nside"]) + len(c['components'].keys()), dtype=jnp.complex128)
+# A(init_sig)
 # cg(jax.random.normal(
 #     A,
 #     b,
@@ -223,12 +231,11 @@ init_sig = jax.random.normal(key, hp.Alm.getsize(lmax=2 * c["nside"]) + len(c['c
 # )
 
 cg(A, b, x0 = init_sig)
+# minimize(fun = A, x0 = init_sig, method='CG', options={'maxiter': 10})
 
 # Try adjoint and symm operator tests
 # Ill conditioned?
 
-
-from jax import random
 
 # x has to have the last two values as real numbers
 # def is_positive_definite_operator(A_func, lmax, key=random.PRNGKey(0), num_tests=5):
@@ -259,3 +266,4 @@ from jax import random
 
 
 # tree_util.tree_map(A, a)
+
