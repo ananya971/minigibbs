@@ -15,7 +15,6 @@ import jaxbind.contrib.jaxducc0 as jaxducc0
 from nifty.re import cg
 from jax import tree_util
 from typing import List
-from jax.scipy.sparse.linalg import cg
 from scipy.optimize import minimize
 
 c = load_config()
@@ -146,8 +145,10 @@ def FNA(x):
     bx = hp.almxfl(x[0], fl = hp.gauss_beam(fwhm=res, lmax=2 * c["nside"])).reshape(1,-1)
     bx = jaxducc0._alm2realalm(bx, lmax=2 * c['nside'], dtype=jnp.float64)
     Abx = jaxducc0.get_healpix_sht(nside = c['nside'], lmax = 2 * c['nside'], mmax = 2 * c['nside'], spin = 0)(bx)[0][0]
+    hp.mollview(Abx, title='Abx', cmap='magma', norm='hist')
     # bAx = hp.almxfl(Ax, fl = hp.gauss_beam(fwhm=res, lmax=2 * c["nside"]))
     NbAx = nstd**-2 * Abx
+    hp.mollview(NbAx, title='NbAx', cmap='magma', norm='hist')
     # FNAx = signals * NbAx
     FNAx = jnp.einsum('ijk, i -> k', signals.T, NbAx).reshape(1,-1)
     return FNAx
@@ -213,24 +214,21 @@ def block_op(inp, A00, A01, A10, A11):
 
     return res
 
-# TODO: Maybe I cannot slice a traced jax array so. 
-
 apply_mat_part = partial(apply_mat, Ninv=nstd**-2, C_ell=TTCl)
 
 A = partial(block_op, A00=apply_mat_part, A01=ANF, A10=FNA, A11=FNF)
 
 init_sig = jax.random.normal(key, (2 * c['nside'] + 1)**2 + len(c['components'].keys()), dtype=jnp.float64).reshape(1,-1)
 
-# A(init_sig)
-# cg(jax.random.normal(
-#     A,
-#     b,
-#     x0=init_sig,
-#     name="CG",
-#     _raise_nonposdef=False,
-# )
+result_fin = cg(A, b, x0 = init_sig, _raise_nonposdef=False, name="CG", absdelta = 1e-10)[0]
 
-cg(A, b, x0 = init_sig)
+
+sht = jaxducc0.get_healpix_sht(nside = c['nside'], lmax = 2 * c['nside'], mmax = 2 * c['nside'], spin = 0, nthreads = 1)
+map = sht(result_fin[:,:-2])
+
+
+# How to check for symmetry and positive definiteness of the operator A?
+
 # minimize(fun = A, x0 = init_sig, method='CG', options={'maxiter': 10})
 
 # Try adjoint and symm operator tests
@@ -263,7 +261,4 @@ cg(A, b, x0 = init_sig)
 #     #     dtype=jnp.complex128,
 #     # ),
 # )
-
-
-# tree_util.tree_map(A, a)
 
