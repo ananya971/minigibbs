@@ -73,7 +73,6 @@ class CG:
         term_2 = hp.almxfl(term_2b, fl = np.sqrt(self.C_ell))
 
         omega0 = jft.random_like(key, jax.ShapeDtypeStruct(shape = (int((self.ps * (self.ps -1))/2 + (self.ps)) ,), dtype = jnp.complex64))
-
         return term_1 + term_2 + np.asarray(omega0)
 
     
@@ -86,14 +85,6 @@ class CG:
         cg_res = np.asarray(self.apply_cg()[0])
         final_alm = hp.almxfl(cg_res, np.sqrt(self.C_ell))
         return final_alm
-
-
-
-
-
-
-
-
 
 
 

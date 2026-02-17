@@ -44,6 +44,23 @@ def Cl_given_s_healpy(alms, nside):
     C_ell = C_ell.at[:2].set(0.)
     return C_ell
 
+import jaxbind.contrib.jaxducc0 as jaxducc0
+def Cl_given_s_healpy_rep(alms, nside, key_i):
+    alms = jaxducc0._realalm2alm(alms, lmax = 2 * nside, dtype = jnp.complex128)
+    lmax = 2 * nside
+    sig_ps = get_sig_ps_healpy(alms)
+    key_ell = jax.random.split(key_i, num=lmax+1)
+    rho_sq = jnp.zeros(shape = lmax+1)
+    for ell in range(0,lmax+1):
+        rn = jax.random.normal(key_ell[ell], shape = (2*ell-1,)) if ell>0 else jax.random.normal(key_ell[ell])
+        rn_mod = [np.abs(i)**2 for i in rn] if ell>0 else np.abs(rn)**2
+        rho_ell = np.sum(rn_mod) if ell>0 else rn_mod
+        rho_sq = rho_sq.at[ell].set(rho_ell)
+    C_ell = sig_ps/rho_sq
+    C_ell = C_ell.at[:2].set(0.)
+    print(f'{C_ell[:10]= }')
+    return C_ell
+
 def Cl_given_s_numpy(alms, nside):
     '''Cl function without jax generated random numbers. Stateful.'''
     lmax = 2 * nside
@@ -97,16 +114,16 @@ def get_sig_ps(alms):
 
 def get_sig_ps_healpy(alms):
     # Gives me the same result as (2ell+1)*hp.alm2cl
-    lmax = hp.Alm.getlmax(alms.shape[0])
+    lmax = hp.Alm.getlmax(alms.shape[1])
     sig_ps = jnp.zeros(shape = lmax + 1)
     for ell in range(lmax+1):
         sigma_ell = 0
         idx = hp.Alm.getidx(lmax, ell, 0)
-        sigma_ell += np.abs(alms[idx])**2
+        sigma_ell += np.abs(alms[:,idx])**2
         for m in range(1, ell + 1):
             idx = hp.Alm.getidx(lmax, ell, m)
-            sigma_ell += 2 * np.abs(alms[idx])**2
-        sig_ps = sig_ps.at[ell].set(sigma_ell)
+            sigma_ell += 2 * np.abs(alms[:,idx])**2
+        sig_ps = sig_ps.at[ell].set(sigma_ell[0])
     
     return sig_ps
             
@@ -131,13 +148,19 @@ def gibbs(iter, init_ps, data, noise, nside):
     ps = init_ps
     smp_C_ell = []
     smp_salm = []
+    seed = c['seed']
+    key = jax.random.PRNGKey(seed)
+    key_i = jax.random.split(key, num=iter)
     for i in range(iter):
-        signal_alm = CG(c, data, noise, ps)()
-        result_pix = hp.alm2map(np.asarray(signal_alm), nside = c['nside'], lmax= 2 * nside)
+        signal_alm = CG(c, data, noise, ps)().reshape(1,-1)
+        signal_alm_r = jaxducc0._alm2realalm(signal_alm, lmax = 2 * nside, dtype = jnp.float64)
+        result_pix = hp.alm2map(np.asarray(signal_alm[0]), nside = c['nside'], lmax= 2 * nside)
         plot_map(result_pix*1e6, norm='hist', title=f'{i=}', unit='uK',
                  show=c['show_plots'], fname=f'map_{i}.png')
-        C_ell = Cl_given_s_healpy(np.asarray(signal_alm), nside = nside) # init_signal in pixel space
-        ps = C_ell 
+        # C_ell = Cl_given_s_healpy(np.asarray(signal_alm), nside = nside) # init_signal in pixel space
+        C_ell = Cl_given_s_healpy_rep(np.asarray(signal_alm_r), nside = nside, key_i=key_i[i])
+        print(f'{key_i[i]= }')
+        ps = C_ell
         plt.figure()
         plot_c_ells(Cl_to_Dl(C_ell), label='D_ell check', logx=True,
                     legend=True, show=c['show_plots'], fname=f'D_ell_{i}.png')

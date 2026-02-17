@@ -13,10 +13,6 @@ import camb
 from functools import partial
 import jaxbind.contrib.jaxducc0 as jaxducc0
 from nifty.re import cg
-from jax import tree_util
-from typing import List
-from scipy.optimize import minimize
-
 c = load_config()
 
 pars = camb.set_params(
@@ -98,6 +94,11 @@ def realalm2alm_jax(alm_real: jnp.ndarray, lmax: int, dtype=jnp.complex128):
 
 cmb_cg = CG(c=c, data=data_beamed, noise=nstd**2, C_ell=TTCl)
 cmb_rhs = jaxducc0._alm2realalm(cmb_cg.rhs_cmb().reshape(1,-1), lmax=2 * c["nside"], dtype=jnp.float64)
+sht = jaxducc0.get_healpix_sht(nside = c['nside'], lmax = 2 * c['nside'], mmax = 2 * c['nside'], spin = 0, nthreads = 1)
+
+#%%
+
+hp.mollview(np.asarray(sht(cmb_rhs))[0,0], cmap = 'magma', norm = 'hist', title = 'cmb_rhs')
 b = jnp.concatenate([cmb_rhs, ff_rhs.reshape(1,-1), synch_rhs.reshape(1,-1)], axis = 1)
 # b = {"complex": cmb_rhs, "real": jnp.stack([ff_rhs, synch_rhs])}
 
@@ -145,16 +146,11 @@ def FNA(x):
     bx = hp.almxfl(x[0], fl = hp.gauss_beam(fwhm=res, lmax=2 * c["nside"])).reshape(1,-1)
     bx = jaxducc0._alm2realalm(bx, lmax=2 * c['nside'], dtype=jnp.float64)
     Abx = jaxducc0.get_healpix_sht(nside = c['nside'], lmax = 2 * c['nside'], mmax = 2 * c['nside'], spin = 0)(bx)[0][0]
-    hp.mollview(Abx, title='Abx', cmap='magma', norm='hist')
     # bAx = hp.almxfl(Ax, fl = hp.gauss_beam(fwhm=res, lmax=2 * c["nside"]))
     NbAx = nstd**-2 * Abx
-    hp.mollview(NbAx, title='NbAx', cmap='magma', norm='hist')
     # FNAx = signals * NbAx
     FNAx = jnp.einsum('ijk, i -> k', signals.T, NbAx).reshape(1,-1)
     return FNAx
-
-# x = jax.random.normal(key, hp.Alm.getsize(2 * c['nside']), jnp.float64).reshape(1,-1)
-# FNA(x)
 
 
 def apply_mat(x, Ninv, C_ell):
@@ -218,18 +214,52 @@ apply_mat_part = partial(apply_mat, Ninv=nstd**-2, C_ell=TTCl)
 
 A = partial(block_op, A00=apply_mat_part, A01=ANF, A10=FNA, A11=FNF)
 
-init_sig = jax.random.normal(key, (2 * c['nside'] + 1)**2 + len(c['components'].keys()), dtype=jnp.float64).reshape(1,-1)
+init_sig_alm = hp.synalm(self.C_ell, lmax = 2 * self.c['nside'])
 
-result_fin = cg(A, b, x0 = init_sig, _raise_nonposdef=False, name="CG", absdelta = 1e-10)[0]
+# init_sig = jax.random.normal(key, (2 * c['nside'] + 1)**2 + len(c['components'].keys()), dtype=jnp.float64).reshape(1,-1)
+
+# result_fin = cg(A, b, x0 = init_sig, _raise_nonposdef=False, name="CG", absdelta = 1e-10)[0]
+from sample import Cl_given_s_healpy_rep
+from plotting import plot_c_ells
+from utils import Cl_to_Dl
+import matplotlib.pyplot as plt
 
 
-sht = jaxducc0.get_healpix_sht(nside = c['nside'], lmax = 2 * c['nside'], mmax = 2 * c['nside'], spin = 0, nthreads = 1)
-map = sht(result_fin[:,:-2])
+# map = sht(result_fin[:,:-2])
+
+def gibbs_fg(iter, init_signal, nside):
+    smp_C_ell = []
+    smp_salm = []
+    seed = c['seed']
+    key = jax.random.PRNGKey(seed)
+    key_i = jax.random.split(key, num = iter)
+    signal = init_signal
+
+    for i in range(iter):
+        signal = cg(A, b, x0 = signal, _raise_nonposdef = False, name = 'CG')[0]
+        result_pix = sht(np.asarray(signal)[:, :-2])
+        hp.mollview(result_pix[0][0], norm = 'hist', cmap = 'magma', title = f'{i} result_pix')
+
+        # C_ell = Cl_given_s_healpy(np.asarray(signal_alm), nside = nside) # init_signal in pixel space
+        C_ell = Cl_given_s_healpy_rep(np.asarray(signal[:, :-2]), nside = nside, key_i=key_i[i])
+        print(f'{key_i[i]= }')
+        plt.figure()
+        plot_c_ells(Cl_to_Dl(C_ell), label='D_ell check', logx=True,
+                    legend=True, show=c['show_plots'], fname=f'D_ell_{i}.png')
+        
+    if iter-i <=10:
+        smp_C_ell.append(C_ell)
+        smp_salm.append(signal)
+
+    return smp_C_ell, smp_salm
+
+
+gibbs_fg(15, init_signal=init_sig, nside = c['nside'])
+
 
 
 # How to check for symmetry and positive definiteness of the operator A?
 
-# minimize(fun = A, x0 = init_sig, method='CG', options={'maxiter': 10})
 
 # Try adjoint and symm operator tests
 # Ill conditioned?
@@ -262,3 +292,5 @@ map = sht(result_fin[:,:-2])
 #     # ),
 # )
 
+
+# %%

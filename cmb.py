@@ -45,12 +45,12 @@ class CMB(jft.Model):
             self.grid.harmonic_grid.power_distributor
         ]  # Power distributor
 
-        self.alm_E1 = self.TECl[2:] / jnp.sqrt(2 * self.TTCl[2:])
+        self.alm_E1 = self.TECl[2:] / jnp.sqrt(self.TTCl[2:])
         self.alm_E1 = jnp.pad(self.alm_E1, (2, 0), constant_values=0) # For monopole and dipole. Replace by 0
         self.alm_E1 = self.alm_E1[: self.grid.harmonic_grid.lmax + 1]
         self.alm_E1 = self.alm_E1[self.grid.harmonic_grid.power_distributor]
 
-        self.alm_E2 = jnp.sqrt((self.EECl[2:] / 2) - ((self.TECl[2:]) ** 2 / (2 * self.TTCl[2:])))
+        self.alm_E2 = jnp.sqrt((self.EECl[2:]) - ((self.TECl[2:]) ** 2 / (self.TTCl[2:])))
         self.alm_E2 = jnp.pad(self.alm_E2, (2, 0), constant_values=0) # For monopole and dipole. Replace by 0
         self.alm_E2 = self.alm_E2[: self.grid.harmonic_grid.lmax + 1]
         self.alm_E2 = self.alm_E2[self.grid.harmonic_grid.power_distributor]
@@ -109,7 +109,6 @@ class CMB(jft.Model):
         qu = qu if 'U' in self.c['stokes'] else qu.at[1].mul(0.)
         input_T = self.alm_T * xi_T
         input_T = jnp.expand_dims(input_T, 0)
-        print(f'{input_T=}')
         i = jnp.array(sht(input_T))[0] # Shape modifications for valid input to `sht`
         i = i if 'I' in self.c['stokes'] else jnp.zeros(jnp.shape(i))
         fields = jnp.vstack((i, qu))

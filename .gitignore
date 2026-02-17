@@ -2,9 +2,6 @@ __pycache__/
 
 /*.ipynb
 
-# Ignore data 
-
-data/
 
 PhD Seminars/*/*.aux
 PhD Seminars/*/*.fdb_latexmk
